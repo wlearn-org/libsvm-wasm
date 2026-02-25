@@ -8,9 +8,9 @@ export async function train(params, X, y) {
   return model
 }
 
-// Convenience: load model and predict, auto-disposes model
-export async function predict(modelBuffer, X) {
-  const model = await (await import('./model.js')).SVMModel.load(modelBuffer)
+// Convenience: load WLRN bundle and predict, auto-disposes model
+export async function predict(bundleBytes, X) {
+  const model = await (await import('./model.js')).SVMModel.load(bundleBytes)
   const result = model.predict(X)
   model.dispose()
   return result

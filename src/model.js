@@ -1,7 +1,13 @@
 import { getWasm, loadSVM } from './wasm.js'
+import {
+  normalizeX, normalizeY,
+  encodeBundle, decodeBundle,
+  register,
+  DisposedError, NotFittedError
+} from '@wlearn/core'
 
-// FinalizationRegistry safety net
-const registry = typeof FinalizationRegistry !== 'undefined'
+// FinalizationRegistry safety net -- warns if dispose() was never called
+const leakRegistry = typeof FinalizationRegistry !== 'undefined'
   ? new FinalizationRegistry(({ ptr, freeFn }) => {
     if (ptr[0]) {
       console.warn('@wlearn/libsvm: Model was not disposed -- calling free() automatically. This is a bug in your code.')
@@ -29,7 +35,7 @@ export const Kernel = {
 
 const SVR_TYPES = new Set([SVMType.EPSILON_SVR, SVMType.NU_SVR])
 
-// --- Input normalization ---
+// --- Input resolution ---
 
 function resolveSVMType(s) {
   if (typeof s === 'number') return s
@@ -41,45 +47,6 @@ function resolveKernel(k) {
   if (typeof k === 'number') return k
   if (typeof k === 'string' && k in Kernel) return Kernel[k]
   return Kernel.RBF
-}
-
-function normalizeX(X, coerce) {
-  // Fast path: typed matrix
-  if (X && typeof X === 'object' && !Array.isArray(X) && X.data) {
-    const { data, rows, cols } = X
-    if (!(data instanceof Float64Array)) {
-      if (coerce === 'error') throw new Error('Expected Float64Array in typed matrix')
-      return { data: new Float64Array(data), rows, cols }
-    }
-    return { data, rows, cols }
-  }
-
-  // Slow path: number[][]
-  if (Array.isArray(X) && Array.isArray(X[0])) {
-    if (coerce === 'error') {
-      throw new Error('Input coercion disabled (coerce: "error"). Pass { data: Float64Array, rows, cols } instead of number[][].')
-    }
-    const rows = X.length
-    const cols = X[0].length
-    const data = new Float64Array(rows * cols)
-    for (let i = 0; i < rows; i++) {
-      for (let j = 0; j < cols; j++) {
-        data[i * cols + j] = X[i][j]
-      }
-    }
-    if (coerce === 'warn') {
-      const bytes = data.byteLength
-      console.warn(`@wlearn/libsvm: Converted number[][] to Float64Array (copied ${(bytes / 1024).toFixed(1)} KB, shape ${rows}x${cols}). For performance, pass { data, rows, cols }.`)
-    }
-    return { data, rows, cols }
-  }
-
-  throw new Error('X must be number[][] or { data: Float64Array, rows, cols }')
-}
-
-function normalizeY(y) {
-  if (y instanceof Float64Array) return y
-  return new Float64Array(y)
 }
 
 function getLastError() {
@@ -117,8 +84,8 @@ export class SVMModel {
     this.#freed = false
     if (this.#handle) {
       this.#ptrRef = [this.#handle]
-      if (registry) {
-        registry.register(this, {
+      if (leakRegistry) {
+        leakRegistry.register(this, {
           ptr: this.#ptrRef,
           freeFn: (h) => getWasm()._wl_svm_free_model(h)
         }, this)
@@ -134,6 +101,7 @@ export class SVMModel {
   // --- Estimator interface ---
 
   fit(X, y) {
+    this.#ensureFitted(false)
     const wasm = getWasm()
 
     // Dispose previous model if refitting
@@ -141,11 +109,13 @@ export class SVMModel {
       wasm._wl_svm_free_model(this.#handle)
       this.#handle = null
       if (this.#ptrRef) this.#ptrRef[0] = null
-      if (registry) registry.unregister(this)
+      if (leakRegistry) leakRegistry.unregister(this)
     }
 
     const { data: xData, rows, cols } = this.#normalizeX(X)
-    const yData = normalizeY(y)
+    const yNorm = normalizeY(y)
+    // WASM boundary requires Float64Array
+    const yData = yNorm instanceof Float64Array ? yNorm : new Float64Array(yNorm)
     this.#ncol = cols
 
     if (yData.length !== rows) {
@@ -190,8 +160,8 @@ export class SVMModel {
     this.#fitted = true
 
     this.#ptrRef = [this.#handle]
-    if (registry) {
-      registry.register(this, {
+    if (leakRegistry) {
+      leakRegistry.register(this, {
         ptr: this.#ptrRef,
         freeFn: (h) => getWasm()._wl_svm_free_model(h)
       }, this)
@@ -323,48 +293,40 @@ export class SVMModel {
 
   save() {
     this.#ensureFitted()
-    const wasm = getWasm()
-
-    const outBufPtr = wasm._malloc(4)
-    const outLenPtr = wasm._malloc(4)
-
-    const ret = wasm._wl_svm_save_model(this.#handle, outBufPtr, outLenPtr)
-
-    if (ret !== 0) {
-      wasm._free(outBufPtr)
-      wasm._free(outLenPtr)
-      throw new Error(`save failed: ${getLastError()}`)
-    }
-
-    const bufPtr = wasm.getValue(outBufPtr, 'i32')
-    const bufLen = wasm.getValue(outLenPtr, 'i32')
-
-    const result = new Uint8Array(bufLen)
-    result.set(wasm.HEAPU8.subarray(bufPtr, bufPtr + bufLen))
-
-    wasm._wl_svm_free_buffer(bufPtr)
-    wasm._free(outBufPtr)
-    wasm._free(outLenPtr)
-
-    return result
+    const rawBytes = this.#saveRaw()
+    const svmType = resolveSVMType(this.#params.svmType)
+    const typeId = SVR_TYPES.has(svmType)
+      ? 'wlearn.libsvm.regressor@1'
+      : 'wlearn.libsvm.classifier@1'
+    return encodeBundle(
+      { typeId, params: this.getParams() },
+      [{ id: 'model', data: rawBytes }]
+    )
   }
 
-  static async load(buffer) {
+  static async load(bytes) {
+    const { manifest, toc, blobs } = decodeBundle(bytes)
+    return SVMModel._fromBundle(manifest, toc, blobs)
+  }
+
+  static async _fromBundle(manifest, toc, blobs) {
     await loadSVM()
     const wasm = getWasm()
 
-    const buf = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer)
-    const bufPtr = wasm._malloc(buf.length)
-    wasm.HEAPU8.set(buf, bufPtr)
+    const entry = toc.find(e => e.id === 'model')
+    if (!entry) throw new Error('Bundle missing "model" artifact')
+    const raw = blobs.subarray(entry.offset, entry.offset + entry.length)
 
-    const modelPtr = wasm._wl_svm_load_model(bufPtr, buf.length)
+    const bufPtr = wasm._malloc(raw.length)
+    wasm.HEAPU8.set(raw, bufPtr)
+    const modelPtr = wasm._wl_svm_load_model(bufPtr, raw.length)
     wasm._free(bufPtr)
 
     if (!modelPtr) {
       throw new Error(`load failed: ${getLastError()}`)
     }
 
-    return new SVMModel(LOAD_SENTINEL, modelPtr, {})
+    return new SVMModel(LOAD_SENTINEL, modelPtr, manifest.params || {})
   }
 
   dispose() {
@@ -377,7 +339,7 @@ export class SVMModel {
     }
 
     if (this.#ptrRef) this.#ptrRef[0] = null
-    if (registry) registry.unregister(this)
+    if (leakRegistry) leakRegistry.unregister(this)
 
     this.#handle = null
     this.#fitted = false
@@ -466,6 +428,33 @@ export class SVMModel {
 
   // --- Private helpers ---
 
+  #saveRaw() {
+    const wasm = getWasm()
+
+    const outBufPtr = wasm._malloc(4)
+    const outLenPtr = wasm._malloc(4)
+
+    const ret = wasm._wl_svm_save_model(this.#handle, outBufPtr, outLenPtr)
+
+    if (ret !== 0) {
+      wasm._free(outBufPtr)
+      wasm._free(outLenPtr)
+      throw new Error(`save failed: ${getLastError()}`)
+    }
+
+    const bufPtr = wasm.getValue(outBufPtr, 'i32')
+    const bufLen = wasm.getValue(outLenPtr, 'i32')
+
+    const result = new Uint8Array(bufLen)
+    result.set(wasm.HEAPU8.subarray(bufPtr, bufPtr + bufLen))
+
+    wasm._wl_svm_free_buffer(bufPtr)
+    wasm._free(outBufPtr)
+    wasm._free(outLenPtr)
+
+    return result
+  }
+
   #normalizeX(X) {
     const coerce = this.#warned ? 'auto' : this.#coerce
     const result = normalizeX(X, coerce)
@@ -475,9 +464,9 @@ export class SVMModel {
     return result
   }
 
-  #ensureFitted() {
-    if (this.#freed) throw new Error('Model already disposed')
-    if (!this.#fitted) throw new Error('Model not fitted -- call fit() first')
+  #ensureFitted(requireFit = true) {
+    if (this.#freed) throw new DisposedError('SVMModel has been disposed.')
+    if (requireFit && !this.#fitted) throw new NotFittedError('SVMModel is not fitted. Call fit() first.')
   }
 
   #isRegressor() {
@@ -485,3 +474,8 @@ export class SVMModel {
     return SVR_TYPES.has(svmType)
   }
 }
+
+// --- Register loaders with @wlearn/core ---
+
+register('wlearn.libsvm.classifier@1', (m, t, b) => SVMModel._fromBundle(m, t, b))
+register('wlearn.libsvm.regressor@1', (m, t, b) => SVMModel._fromBundle(m, t, b))

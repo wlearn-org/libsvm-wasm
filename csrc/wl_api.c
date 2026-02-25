@@ -243,7 +243,7 @@ int wl_svm_predict_values(
 
   /* Determine output dimension per row */
   int dim;
-  if (svm_type == ONE_CLASS_SVM || svm_type == EPSILON_SVR || svm_type == NU_SVR) {
+  if (svm_type == ONE_CLASS || svm_type == EPSILON_SVR || svm_type == NU_SVR) {
     dim = 1;
   } else if (nr_class == 2) {
     dim = 1;

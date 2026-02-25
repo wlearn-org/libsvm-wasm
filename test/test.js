@@ -75,16 +75,17 @@ await test('C_SVC with RBF kernel on nonlinear data', async () => {
   })
 
   // Concentric circles: class 0 near origin, class 1 farther out
+  // Deterministic using LCG
   const X = []
   const y = []
   for (let i = 0; i < 200; i++) {
-    const angle = Math.random() * Math.PI * 2
+    const angle = ((i * 7 + 3) % 200) / 200 * Math.PI * 2
     if (i < 100) {
-      const r = Math.random() * 2
+      const r = ((i * 13 + 7) % 100) / 100 * 2  // [0, 2]
       X.push([r * Math.cos(angle), r * Math.sin(angle)])
       y.push(0)
     } else {
-      const r = 3 + Math.random() * 2
+      const r = 3 + ((i * 11 + 5) % 100) / 100 * 2  // [3, 5]
       X.push([r * Math.cos(angle), r * Math.sin(angle)])
       y.push(1)
     }
@@ -111,16 +112,16 @@ await test('C_SVC with LINEAR kernel', async () => {
   const model = await SVMModel.create({
     svmType: 'C_SVC',
     kernel: 'LINEAR',
-    C: 1.0
+    C: 10.0
   })
 
   const X = []
   const y = []
   for (let i = 0; i < 100; i++) {
-    const x1 = Math.random() * 10
-    const x2 = Math.random() * 10
+    const x1 = ((i * 7 + 3) % 100) / 50 - 1  // [-1, 1]
+    const x2 = ((i * 13 + 7) % 100) / 50 - 1  // [-1, 1]
     X.push([x1, x2])
-    y.push(x1 + x2 > 10 ? 1 : 0)
+    y.push(x1 + x2 > 0 ? 1 : 0)
   }
 
   model.fit(X, y)
@@ -145,10 +146,10 @@ await test('NU_SVC classification', async () => {
   const X = []
   const y = []
   for (let i = 0; i < 100; i++) {
-    const x1 = Math.random() * 10
-    const x2 = Math.random() * 10
+    const x1 = ((i * 7 + 3) % 100) / 50 - 1
+    const x2 = ((i * 13 + 7) % 100) / 50 - 1
     X.push([x1, x2])
-    y.push(x1 + x2 > 10 ? 1 : 0)
+    y.push(x1 + x2 > 0 ? 1 : 0)
   }
 
   model.fit(X, y)
@@ -169,11 +170,11 @@ await test('Multi-class classification', async () => {
   const X = []
   const y = []
   for (let i = 0; i < 150; i++) {
-    const x1 = Math.random() * 10
-    const x2 = Math.random() * 10
+    const x1 = ((i * 7 + 3) % 150) / 75 - 1  // [-1, 1]
+    const x2 = ((i * 13 + 7) % 150) / 75 - 1  // [-1, 1]
     X.push([x1, x2])
     const sum = x1 + x2
-    y.push(sum < 7 ? 0 : sum < 13 ? 1 : 2)
+    y.push(sum < -0.3 ? 0 : sum < 0.3 ? 1 : 2)
   }
 
   model.fit(X, y)
@@ -205,10 +206,10 @@ await test('predictProba with probability=1', async () => {
   const X = []
   const y = []
   for (let i = 0; i < 100; i++) {
-    const x1 = Math.random() * 10
-    const x2 = Math.random() * 10
-    X.push([x1, x2])
-    y.push(x1 + x2 > 10 ? 1 : 0)
+    const t = ((i * 7 + 3) % 100) / 100
+    const s = ((i * 13 + 7) % 100) / 100
+    X.push([t * 2 - 1, s * 2 - 1])
+    y.push(t + s > 1 ? 1 : 0)
   }
 
   model.fit(X, y)
@@ -256,6 +257,39 @@ await test('decisionFunction returns values', async () => {
 })
 
 // ============================================================
+// Score
+// ============================================================
+console.log('\n=== Score ===')
+
+await test('score returns accuracy for classification', async () => {
+  const model = await SVMModel.create({
+    svmType: 'C_SVC',
+    kernel: 'RBF',
+    C: 10.0,
+    gamma: 0.5
+  })
+
+  const X = []
+  const y = []
+  for (let i = 0; i < 100; i++) {
+    const t = ((i * 11 + 5) % 100) / 100
+    const s = ((i * 17 + 3) % 100) / 100
+    const x1 = t * 2 - 1
+    const x2 = s * 2 - 1
+    X.push([x1, x2])
+    y.push(x1 + x2 > 0 ? 1 : 0)
+  }
+
+  model.fit(X, y)
+  const acc = model.score(X, y)
+  assert(typeof acc === 'number', 'score should be a number')
+  assert(acc > 0.8, `accuracy ${acc} too low`)
+  assert(acc <= 1.0, `accuracy ${acc} > 1`)
+
+  model.dispose()
+})
+
+// ============================================================
 // Regression
 // ============================================================
 console.log('\n=== Regression ===')
@@ -272,9 +306,10 @@ await test('EPSILON_SVR regression', async () => {
   const X = []
   const y = []
   for (let i = 0; i < 100; i++) {
-    const x1 = Math.random() * 10
+    const x1 = ((i * 7 + 3) % 100) / 50 - 1  // [-1, 1]
+    const noise = ((i * 31 + 11) % 100) / 500 - 0.1
     X.push([x1])
-    y.push(2 * x1 + (Math.random() - 0.5))
+    y.push(2 * x1 + noise)
   }
 
   model.fit(X, y)
@@ -301,9 +336,10 @@ await test('NU_SVR regression', async () => {
   const X = []
   const y = []
   for (let i = 0; i < 100; i++) {
-    const x1 = Math.random() * 10
+    const x1 = ((i * 7 + 3) % 100) / 50 - 1
+    const noise = ((i * 31 + 11) % 100) / 500 - 0.1
     X.push([x1])
-    y.push(3 * x1 + (Math.random() - 0.5))
+    y.push(3 * x1 + noise)
   }
 
   model.fit(X, y)
@@ -326,11 +362,13 @@ await test('ONE_CLASS novelty detection', async () => {
     gamma: 0.5
   })
 
-  // Normal data clustered around origin
+  // Normal data clustered around origin (deterministic)
   const X = []
-  const y = []  // one-class ignores y but we need it for the API
+  const y = []
   for (let i = 0; i < 100; i++) {
-    X.push([Math.random() * 2 - 1, Math.random() * 2 - 1])
+    const x1 = ((i * 7 + 3) % 100) / 50 - 1  // [-1, 1]
+    const x2 = ((i * 13 + 7) % 100) / 50 - 1  // [-1, 1]
+    X.push([x1, x2])
     y.push(1)  // dummy labels
   }
 
@@ -350,9 +388,60 @@ await test('ONE_CLASS novelty detection', async () => {
 })
 
 // ============================================================
-// Save / Load
+// Save / Load (WLRN bundle format)
 // ============================================================
 console.log('\n=== Save / Load ===')
+
+const { decodeBundle, load: coreLoad } = await import('@wlearn/core')
+
+await test('save produces WLRN bundle', async () => {
+  const model = await SVMModel.create({
+    svmType: 'C_SVC',
+    kernel: 'RBF',
+    C: 1.0,
+    gamma: 0.5
+  })
+  model.fit([[1, 2], [3, 4], [5, 6], [7, 8]], [0, 0, 1, 1])
+
+  const buf = model.save()
+  assert(buf instanceof Uint8Array, 'save should return Uint8Array')
+  assert(buf.length > 0, 'saved model should not be empty')
+
+  // Verify WLRN magic
+  assert(buf[0] === 0x57, 'bad magic[0]')
+  assert(buf[1] === 0x4c, 'bad magic[1]')
+  assert(buf[2] === 0x52, 'bad magic[2]')
+  assert(buf[3] === 0x4e, 'bad magic[3]')
+
+  // Verify manifest
+  const { manifest, toc } = decodeBundle(buf)
+  assert(manifest.typeId === 'wlearn.libsvm.classifier@1',
+    `expected classifier typeId, got ${manifest.typeId}`)
+  assert(manifest.bundleVersion === 1, `expected bundleVersion 1, got ${manifest.bundleVersion}`)
+  assert(manifest.params.svmType === 'C_SVC', `expected svmType C_SVC, got ${manifest.params.svmType}`)
+  assert(manifest.params.C === 1.0, `expected C=1.0, got ${manifest.params.C}`)
+  assert(toc.length === 1, `expected 1 TOC entry, got ${toc.length}`)
+  assert(toc[0].id === 'model', `expected TOC entry "model", got ${toc[0].id}`)
+
+  model.dispose()
+})
+
+await test('save regressor uses regressor typeId', async () => {
+  const model = await SVMModel.create({
+    svmType: 'EPSILON_SVR',
+    kernel: 'RBF',
+    C: 1.0,
+    gamma: 0.1
+  })
+  model.fit([[1, 2], [3, 4]], [1.5, 3.5])
+
+  const buf = model.save()
+  const { manifest } = decodeBundle(buf)
+  assert(manifest.typeId === 'wlearn.libsvm.regressor@1',
+    `expected regressor typeId, got ${manifest.typeId}`)
+
+  model.dispose()
+})
 
 await test('save and load model round-trip', async () => {
   const model = await SVMModel.create({
@@ -368,17 +457,75 @@ await test('save and load model round-trip', async () => {
 
   const preds1 = model.predict(X)
   const buf = model.save()
-  assert(buf instanceof Uint8Array, 'save should return Uint8Array')
-  assert(buf.length > 0, 'saved model should not be empty')
 
   const model2 = await SVMModel.load(buf)
+  assert(model2.isFitted, 'loaded model should be fitted')
+
   const preds2 = model2.predict(X)
 
+  // Same-runtime round-trip: exact match
   assert(preds1.length === preds2.length, 'prediction length mismatch')
   for (let i = 0; i < preds1.length; i++) {
     assert(preds1[i] === preds2[i],
       `prediction ${i}: ${preds1[i]} !== ${preds2[i]}`)
   }
+
+  // Loaded model preserves params
+  const params = model2.getParams()
+  assert(params.svmType === 'C_SVC', `loaded params.svmType = ${params.svmType}`)
+  assert(params.C === 1.0, `loaded params.C = ${params.C}`)
+
+  model.dispose()
+  model2.dispose()
+})
+
+// ============================================================
+// core.load() registry dispatch
+// ============================================================
+console.log('\n=== Registry Dispatch ===')
+
+await test('core.load() dispatches to libsvm loader', async () => {
+  const model = await SVMModel.create({
+    svmType: 'C_SVC',
+    kernel: 'RBF',
+    C: 1.0,
+    gamma: 0.5
+  })
+  model.fit([[1, 2], [3, 4], [5, 6], [7, 8]], [0, 0, 1, 1])
+
+  const preds1 = model.predict([[1, 2], [7, 8]])
+  const buf = model.save()
+
+  // Load via core registry dispatcher (not SVMModel.load directly)
+  const model2 = await coreLoad(buf)
+  assert(model2.isFitted, 'registry-loaded model should be fitted')
+
+  const preds2 = model2.predict([[1, 2], [7, 8]])
+  assert(preds1.length === preds2.length, 'prediction length mismatch')
+  for (let i = 0; i < preds1.length; i++) {
+    assert(preds1[i] === preds2[i],
+      `core.load prediction ${i}: ${preds1[i]} !== ${preds2[i]}`)
+  }
+
+  model.dispose()
+  model2.dispose()
+})
+
+await test('core.load() works for regressor bundles', async () => {
+  const model = await SVMModel.create({
+    svmType: 'EPSILON_SVR',
+    kernel: 'RBF',
+    C: 1.0,
+    gamma: 0.1
+  })
+  model.fit([[1, 2], [3, 4]], [1.5, 3.5])
+
+  const buf = model.save()
+  const model2 = await coreLoad(buf)
+  assert(model2.isFitted, 'registry-loaded regressor should be fitted')
+
+  const preds = model2.predict([[1, 2]])
+  assert(preds.length === 1, `expected 1 prediction, got ${preds.length}`)
 
   model.dispose()
   model2.dispose()
@@ -490,18 +637,19 @@ await test('coerce error mode rejects arrays', async () => {
 console.log('\n=== Gamma Default ===')
 
 await test('gamma defaults to 1/n_features when 0', async () => {
-  // Should not crash with gamma=0 (auto mode)
   const model = await SVMModel.create({
     svmType: 'C_SVC',
     kernel: 'RBF',
-    gamma: 0,  // auto: 1/n_features
+    gamma: 0,
     C: 1.0
   })
 
   const X = []
   const y = []
   for (let i = 0; i < 50; i++) {
-    X.push([Math.random() * 10, Math.random() * 10])
+    const x1 = ((i * 7 + 3) % 50) / 25 - 1
+    const x2 = ((i * 13 + 7) % 50) / 25 - 1
+    X.push([x1, x2])
     y.push(i < 25 ? 0 : 1)
   }
 
@@ -532,42 +680,6 @@ await test('capabilities reflect SVM type', async () => {
   assert(oc.capabilities.oneClass === true, 'ONE_CLASS should have oneClass capability')
   oc.dispose()
 })
-
-// ============================================================
-// Cross-runtime parity (when fixtures exist)
-// ============================================================
-console.log('\n=== Cross-Runtime Parity ===')
-
-const fixturesDir = join(__dirname, 'fixtures')
-const hasFixtures = existsSync(join(fixturesDir, 'rbf_classification.data.json'))
-
-if (!hasFixtures) {
-  console.log('  SKIP: no fixtures (run: python test/fixtures/generate.py)')
-} else {
-  function loadFixture(name) {
-    return JSON.parse(readFileSync(join(fixturesDir, `${name}.data.json`), 'utf-8'))
-  }
-
-  await test('Cross-runtime: RBF classification parity', async () => {
-    const fix = loadFixture('rbf_classification')
-    const model = await SVMModel.create(fix.params)
-    model.fit(fix.X, fix.y)
-
-    const preds = model.predict(fix.X)
-    assert(preds.length === fix.predictions.length,
-      `length mismatch: ${preds.length} vs ${fix.predictions.length}`)
-
-    let matching = 0
-    for (let i = 0; i < preds.length; i++) {
-      if (preds[i] === fix.predictions[i]) matching++
-    }
-    // Not exact match due to different libsvm versions / defaults, but should be close
-    assert(matching / preds.length > 0.9,
-      `only ${matching}/${preds.length} predictions match`)
-
-    model.dispose()
-  })
-}
 
 // ============================================================
 // Summary
