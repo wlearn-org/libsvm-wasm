@@ -1,9 +1,5 @@
-import { fileURLToPath } from 'url'
-import { dirname, join } from 'path'
-import { readFileSync, existsSync } from 'fs'
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
+const { join } = require('path')
+const { readFileSync, existsSync } = require('fs')
 
 let passed = 0
 let failed = 0
@@ -29,12 +25,14 @@ function assertClose(a, b, tol, msg) {
   if (diff > tol) throw new Error(msg || `expected ${a} ~ ${b} (diff=${diff}, tol=${tol})`)
 }
 
+async function main() {
+
 // ============================================================
 // WASM loading
 // ============================================================
 console.log('\n=== WASM Loading ===')
 
-const { loadSVM } = await import('../src/wasm.js')
+const { loadSVM } = require('../src/wasm.js')
 const wasm = await loadSVM()
 
 await test('WASM module loads', async () => {
@@ -52,7 +50,7 @@ await test('get_last_error returns string', async () => {
 // ============================================================
 console.log('\n=== SVMModel ===')
 
-const { SVMModel, SVMType, Kernel } = await import('../src/model.js')
+const { SVMModel, SVMType, Kernel } = require('../src/model.js')
 
 await test('create() returns model', async () => {
   const model = await SVMModel.create({ svmType: 'C_SVC', kernel: 'RBF' })
@@ -392,7 +390,7 @@ await test('ONE_CLASS novelty detection', async () => {
 // ============================================================
 console.log('\n=== Save / Load ===')
 
-const { decodeBundle, load: coreLoad } = await import('@wlearn/core')
+const { decodeBundle, load: coreLoad } = require('@wlearn/core')
 
 await test('save produces WLRN bundle', async () => {
   const model = await SVMModel.create({
@@ -686,3 +684,7 @@ await test('capabilities reflect SVM type', async () => {
 // ============================================================
 console.log(`\n=== Results: ${passed} passed, ${failed} failed ===\n`)
 process.exit(failed > 0 ? 1 : 0)
+
+}
+
+main()

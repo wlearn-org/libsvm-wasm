@@ -1,10 +1,10 @@
-import { getWasm, loadSVM } from './wasm.js'
-import {
+const { getWasm, loadSVM } = require('./wasm.js')
+const {
   normalizeX, normalizeY,
   encodeBundle, decodeBundle,
   register,
   DisposedError, NotFittedError
-} from '@wlearn/core'
+} = require('@wlearn/core')
 
 // FinalizationRegistry safety net -- warns if dispose() was never called
 const leakRegistry = typeof FinalizationRegistry !== 'undefined'
@@ -18,7 +18,7 @@ const leakRegistry = typeof FinalizationRegistry !== 'undefined'
 
 // --- SVM type and kernel constants ---
 
-export const SVMType = {
+const SVMType = {
   C_SVC: 0,
   NU_SVC: 1,
   ONE_CLASS: 2,
@@ -26,7 +26,7 @@ export const SVMType = {
   NU_SVR: 4
 }
 
-export const Kernel = {
+const Kernel = {
   LINEAR: 0,
   POLY: 1,
   RBF: 2,
@@ -59,7 +59,7 @@ const LOAD_SENTINEL = Symbol('load')
 
 // --- SVMModel ---
 
-export class SVMModel {
+class SVMModel {
   #handle = null
   #freed = false
   #ptrRef = null
@@ -479,3 +479,5 @@ export class SVMModel {
 
 register('wlearn.libsvm.classifier@1', (m, t, b) => SVMModel._fromBundle(m, t, b))
 register('wlearn.libsvm.regressor@1', (m, t, b) => SVMModel._fromBundle(m, t, b))
+
+module.exports = { SVMModel, SVMType, Kernel }
