@@ -44,7 +44,7 @@ emcc \
   "${PROJECT_DIR}/csrc/wl_api.c" \
   "${UPSTREAM_DIR}/svm.cpp" \
   -I "${UPSTREAM_DIR}" \
-  -o "${OUTPUT_DIR}/svm.cjs" \
+  -o "${OUTPUT_DIR}/svm.js" \
   -s MODULARIZE=1 \
   -s SINGLE_FILE=1 \
   -s EXPORT_NAME=createSVM \
@@ -70,5 +70,5 @@ wasm_embedded: true
 EOF
 
 echo "=== Build complete ==="
-ls -lh "${OUTPUT_DIR}/svm.cjs"
+ls -lh "${OUTPUT_DIR}/svm.js"
 cat "${OUTPUT_DIR}/BUILD_INFO"

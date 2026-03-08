@@ -9,7 +9,7 @@ async function loadSVM(options = {}) {
 
   loading = (async () => {
     // SINGLE_FILE=1: .wasm is embedded in the .js file, no locateFile needed
-    const createSVM = require('../wasm/svm.cjs')
+    const createSVM = require('../wasm/svm.js')
     wasmModule = await createSVM(options)
     return wasmModule
   })()
