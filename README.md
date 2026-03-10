@@ -16,7 +16,7 @@ npm install @wlearn/libsvm
 const { SVMModel } = require('@wlearn/libsvm')
 
 const model = await SVMModel.create({
-  svmType: 'C_SVC',
+  task: 'classification',  // or 'regression'; auto-detected from labels if omitted
   kernel: 'RBF',
   C: 1.0,
   gamma: 0.5
