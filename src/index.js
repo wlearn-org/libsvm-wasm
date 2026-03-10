@@ -1,10 +1,13 @@
 const { loadSVM, getWasm } = require('./wasm.js')
-const { SVMModel, SVMType, Kernel } = require('./model.js')
+const { SVMModel: SVMModelImpl, SVMType, Kernel } = require('./model.js')
+const { createModelClass } = require('@wlearn/core')
+
+const SVMModel = createModelClass(SVMModelImpl, SVMModelImpl, { name: 'SVMModel', load: loadSVM })
 
 // Convenience: create, fit, return fitted model
 async function train(params, X, y) {
   const model = await SVMModel.create(params)
-  model.fit(X, y)
+  await model.fit(X, y)
   return model
 }
 
