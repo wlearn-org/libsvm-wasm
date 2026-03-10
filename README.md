@@ -2,7 +2,7 @@
 
 LIBSVM v3.37 compiled to WebAssembly. Kernel SVM classification, regression, and novelty detection in browsers and Node.js.
 
-Based on [LIBSVM v3.37](https://www.csie.ntu.edu.tw/~cjlin/libsvm/) (BSD-3-Clause). Zero dependencies. CommonJS.
+Part of [wlearn](https://wlearn.org) ([GitHub](https://github.com/wlearn-org), [all packages](https://github.com/wlearn-org/wlearn#repository-structure)). Based on [LIBSVM v3.37](https://www.csie.ntu.edu.tw/~cjlin/libsvm/) (BSD-3-Clause). Zero dependencies. CommonJS.
 
 ## Install
 
